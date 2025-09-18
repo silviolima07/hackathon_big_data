@@ -3,7 +3,7 @@
 
 # Colunas do dataset de teste:
 
- - semana (número inteiro): número da semana (1 a 4 de janeiro/2023)
+ - semana (número inteiro): número da semana (1 a 5 de janeiro/2023)
  - pdv (número inteiro): código do ponto de venda
  - produto (número inteiro): código do SKU
  - quantidade (número inteiro): previsão de vendas
@@ -34,34 +34,17 @@ sns.set(font_scale = 2)
 
 from sklearn.model_selection import train_test_split
 
-from sklearn.impute import SimpleImputer 
-from sklearn.ensemble import RandomForestRegressor
+import xgboost as xgb
+from sklearn.preprocessing import LabelEncoder
 
 from sklearn.model_selection import RandomizedSearchCV, GridSearchCV
 
 import warnings
 warnings.filterwarnings("ignore")
 
-import pandas as pd
-import numpy as np
-from sklearn.base import BaseEstimator, TransformerMixin
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
-from sklearn.compose import ColumnTransformer
-from sklearn.model_selection import cross_val_score
-from sklearn.metrics import make_scorer, mean_absolute_percentage_error
-from sklearn.model_selection import GridSearchCV, cross_val_score
-from sklearn.metrics import make_scorer
 
 
-
-
-"""# Modelo deve prever a quantidade com estas colunas no dataset df_teste, gerando a coluna quantidade"""
-
-data = {'semana': [1,2,3, 4, 5],
-        'pdv': [1023, 1045, 1023, 1088, 1010],
-        'produto': [123,234, 456, 123, 550]}
-df_teste = pd.DataFrame(data)
+"""# Modelo deve prever a quantidade com estas colunas no dataset de teste, gerando a coluna quantidade"""
 
 def missing_values_table(df):
         mis_val = df.isnull().sum()
@@ -223,8 +206,8 @@ def remove_outliers(df):
 
     df_sem_outliers= df_com_outliers[(df_com_outliers['quantidade'] > (first_quartile - 1.5 * iqr)) &
             (df_com_outliers['quantidade'] < (third_quartile + 1.5 * iqr))].copy()
-            
-    # Remover valores negativos        
+
+    # Remover valores negativos
     df_sem_outliers = df_sem_outliers[df_sem_outliers['quantidade'] >= 0]
     print("Depois:", df_sem_outliers.shape)
     return df_sem_outliers
@@ -235,10 +218,20 @@ df_sem_outliers.describe()
 
 df_sem_outliers.info()
 
+df_final = df_sem_outliers.copy()
+print("\nDataset final\n",df_final)
+
+ # Categoricos
+le_pdv = LabelEncoder() # Separate encoder for pdv
+le_produto = LabelEncoder() # Separate encoder for produto
+
+df_final['pdv'] = le_pdv.fit_transform(df_sem_outliers['pdv'])
+df_final['produto'] = le_produto.fit_transform(df_sem_outliers['produto'])
+
 """# Divisão de treino e teste a ser usado no treinamento e avaliação"""
 
-X = df_sem_outliers.drop('quantidade', axis=1)
-y = df_sem_outliers['quantidade']
+X = df_final.drop('quantidade', axis=1)
+y = df_final['quantidade']
 #
 print(X.shape)
 print(y.shape)
@@ -246,271 +239,178 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.3, rando
 
 """# Treinamento e avaliação WMAPE sem outliers"""
 
-"""# RandomForestRegressor"""
+"""# XGBRegressor"""
 
 
 
 # -----------------------------
 # Métrica WMAPE
 # -----------------------------
-def wmape(y_true, y_pred):
-    return np.sum(np.abs(y_true - y_pred)) / np.sum(np.abs(y_true))
-
-wmape_scorer = make_scorer(wmape, greater_is_better=False)  # menor = melhor
-
-# -----------------------------
-# Feature Engineer
-# -----------------------------
-class StatsFeatureEngineer(BaseEstimator, TransformerMixin):
-    def __init__(self):
-        self.stats_pdv_mean = None
-        self.stats_prod_mean = None
-        self.stats_semana_mean = None
-        self.stats_pdv_median = None
-        self.stats_prod_median = None
-        self.stats_semana_median = None
-
-    def fit(self, X, y=None):
-        df = X.copy()
-        df["quantidade"] = y
-
-        # Médias
-        self.stats_pdv_mean = df.groupby("pdv")["quantidade"].mean().rename("pdv_mean_qtd")
-        self.stats_prod_mean = df.groupby("produto")["quantidade"].mean().rename("prod_mean_qtd")
-        self.stats_semana_mean = df.groupby("semana")["quantidade"].mean().rename("semana_mean_qtd")
-
-        # Medianas
-        self.stats_pdv_median = df.groupby("pdv")["quantidade"].median().rename("pdv_median_qtd")
-        self.stats_prod_median = df.groupby("produto")["quantidade"].median().rename("prod_median_qtd")
-        self.stats_semana_median = df.groupby("semana")["quantidade"].median().rename("semana_median_qtd")
-
-        return self
-
-    def transform(self, X):
-        df = X.copy()
-
-        df = df.join(self.stats_pdv_mean, on="pdv")
-        df = df.join(self.stats_prod_mean, on="produto")
-        df = df.join(self.stats_semana_mean, on="semana")
-
-        df = df.join(self.stats_pdv_median, on="pdv")
-        df = df.join(self.stats_prod_median, on="produto")
-        df = df.join(self.stats_semana_median, on="semana")
-
-        return df.fillna(0)
-
-# -----------------------------
-# Pipeline
-# -----------------------------
-categorical_features = ["pdv", "produto"]
-numerical_features = ["semana", "pdv_mean_qtd", "prod_mean_qtd", "semana_mean_qtd",
-                      "pdv_median_qtd", "prod_median_qtd", "semana_median_qtd"]
-
-categorical_transformer = Pipeline(steps=[
-    ("imputer", SimpleImputer(strategy="most_frequent")),
-    ("onehot", OneHotEncoder(handle_unknown="ignore"))
-])
-
-numerical_transformer = Pipeline(steps=[
-    ("imputer", SimpleImputer(strategy="most_frequent")),
-    ("scaler", StandardScaler())
-])
-
-col_transformer = ColumnTransformer(
-    transformers=[
-        ("cat", categorical_transformer, categorical_features),
-        ("num", numerical_transformer, numerical_features)
-    ]
-)
+def wmape(y_pred, y_true):
+    y_true = y_true.get_label() # Extract labels from DMatrix
+    return 'WMAPE', np.sum(np.abs(np.expm1(y_true) - np.expm1(y_pred))) / np.sum(np.abs(np.expm1(y_true))) # Modified WMAPE to use inverse transformed values
 
 
-pipeline = Pipeline(steps=[
-    ("feature_engineer", StatsFeatureEngineer()),
-    ("preprocessor", col_transformer),
-    ("regressor", RandomForestRegressor(random_state=42))
-])
-
-# -----------------------------
-# Cross-validation simples
-# -----------------------------
-scores = cross_val_score(pipeline, X_train, y_train, cv=3, scoring=wmape_scorer)
-print("WMAPE médio (cross-val):", -scores.mean())
-print("WMAPE por fold:", -scores)
-
-# -----------------------------
-# GridSearchCV
-# -----------------------------
-param_grid = {
-    "regressor__n_estimators": [100, 200],
-    "regressor__max_depth": [10, 20, None],
-    "regressor__min_samples_split": [2, 5]
+# Modelo
+param = {
+    'objective': 'reg:squarederror', # Changed objective as reg:linear is deprecated
+    "booster" : "gbtree",
+    'eta': 0.03,
+    'max_depth':10,
+    'subsample':0.9,
+    'colsample_bytree':0.7
 }
 
-grid_search = GridSearchCV(
-    pipeline,
-    param_grid,
-    cv=3,
-    scoring=wmape_scorer,
-    n_jobs=-1,
-    verbose=2
+# Apply log1p transformation to the target variable y
+y_train_transformed = np.log1p(y_train)
+y_test_transformed = np.log1p(y_test)
+
+dtrain = xgb.DMatrix(X_train, y_train_transformed) # Use transformed y_train
+dvalid = xgb.DMatrix(X_test, y_test_transformed) # Use transformed y_test
+
+watchlist = [(dtrain, 'train'), (dvalid, 'eval')]
+
+print('Treinamento')
+print(dtrain.get_data())
+print(dtrain.get_label())
+
+
+# Treinamento
+print("Treinando em 100 epochs")
+gbm = xgb.train(
+            param,
+            dtrain,
+            num_boost_round=100,
+            evals=watchlist,
+            early_stopping_rounds=100,
+            custom_metric=wmape,
+            verbose_eval=100
 )
+# Predict treino
+yhat = gbm.predict(xgb.DMatrix(X_test))
+# Modify wmape to handle both DMatrix and pandas Series
 
-grid_search.fit(X_train, y_train)
+# This wmape is for evaluation outside of xgb.train
+def wmape_eval(y_true, y_pred):
+    # Inverse transform y_true and y_pred for WMAPE calculation
+    y_true_original = np.expm1(y_true)
+    y_pred_original = np.expm1(y_pred)
+    return np.sum(np.abs(y_true_original - y_pred_original)) / np.sum(np.abs(y_true_original))
 
-print("Melhores hiperparâmetros:", grid_search.best_params_)
-print("Melhor WMAPE (cv):", -grid_search.best_score_)
 
-# -----------------------------
-# Avaliação final no holdout
-# -----------------------------
-best_pipeline = grid_search.best_estimator_
-y_pred = best_pipeline.predict(X_test)
-print("WMAPE test:", wmape(y_test, y_pred))
+# Use the evaluation version of wmape here
+# Pass the transformed y_test and yhat to the evaluation wmape, it will inverse transform internally
+print("WMAPE:", wmape_eval(y_test_transformed, yhat))
+
 
 # -----------------------------
 # Submissão
 # -----------------------------
-# Em df_teste colunas pdv e  produto devem ser object.
-df_teste['pdv'] = df_teste['pdv'].astype(str)
-df_teste['produto'] = df_teste['produto'].astype(str)
 
-y_submit = best_pipeline.predict(df_teste)
-df_submit = df_teste[["semana", "pdv", "produto"]].copy()
-df_submit["quantidade"] = np.round(y_submit).astype(int)
-df_submit.to_csv("submission.csv", sep=";", index=False, encoding="utf-8")
-print("Arquivo submission.csv gerado!")
-
-"""# Pipeline final"""
 """
+### Preparing Actual Test Data for Prediction
 
-# -----------------------------
-# Métrica WMAPE
-# -----------------------------
-def wmape(y_true, y_pred):
-    return np.sum(np.abs(y_true - y_pred)) / np.sum(np.abs(y_true))
+To make predictions, your test data must have the same columns and be preprocessed
+in the same way as your training data (X_train).
 
-wmape_scorer = make_scorer(wmape, greater_is_better=False)
+Specifically, the 'pdv' and 'produto' columns in your test data must contain
+the **original string IDs** that were used to fit the LabelEncoder during training.
+Then, you must use the *same* fitted LabelEncoder to transform these string IDs
+into numerical labels before feeding them to the model.
 
-# -----------------------------
-# Feature Engineer
-# -----------------------------
-class StatsFeatureEngineer(BaseEstimator, TransformerMixin):
-    def fit(self, X, y=None):
-        df = X.copy()
-        df["quantidade"] = y
-
-        # Médias
-        self.stats_pdv_mean = df.groupby("pdv")["quantidade"].mean().rename("pdv_mean_qtd")
-        self.stats_prod_mean = df.groupby("produto")["quantidade"].mean().rename("prod_mean_qtd")
-        self.stats_semana_mean = df.groupby("semana")["quantidade"].mean().rename("semana_mean_qtd")
-
-        # Medianas
-        self.stats_pdv_median = df.groupby("pdv")["quantidade"].median().rename("pdv_median_qtd")
-        self.stats_prod_median = df.groupby("produto")["quantidade"].median().rename("prod_median_qtd")
-        self.stats_semana_median = df.groupby("semana")["quantidade"].median().rename("semana_median_qtd")
-
-        return self
-
-    def transform(self, X):
-        df = X.copy()
-        df = df.join(self.stats_pdv_mean, on="pdv")
-        df = df.join(self.stats_prod_mean, on="produto")
-        df = df.join(self.stats_semana_mean, on="semana")
-        df = df.join(self.stats_pdv_median, on="pdv")
-        df = df.join(self.stats_prod_median, on="produto")
-        df = df.join(self.stats_semana_median, on="semana")
-        return df.fillna(0)
-
-# -----------------------------
-# Pipeline
-# -----------------------------
-# Colunas
-categorical_features = ["pdv", "produto"]
-numerical_features = ["semana", "pdv_mean_qtd", "prod_mean_qtd", "semana_mean_qtd",
-                      "pdv_median_qtd", "prod_median_qtd", "semana_median_qtd"]
-
-# Transformadores
-categorical_transformer = Pipeline(steps=[
-    ("imputer", SimpleImputer(strategy="most_frequent")),
-    ("onehot", OneHotEncoder(handle_unknown="ignore"))
-])
-
-numerical_transformer = Pipeline(steps=[
-    ("imputer", SimpleImputer(strategy="most_frequent")),
-    ("scaler", StandardScaler())
-])
-
-col_transformer = ColumnTransformer(
-    transformers=[
-        ("cat", categorical_transformer, categorical_features),
-        ("num", numerical_transformer, numerical_features)
-    ]
-)
-
-# Pipeline completo
-pipeline = Pipeline(steps=[
-    ("feature_engineer", StatsFeatureEngineer()),
-    ("preprocessor", col_transformer),
-    ("regressor", RandomForestRegressor(random_state=42))
-])
-
-# -----------------------------
-# Cross-validation
-# -----------------------------
-scores = cross_val_score(pipeline, X_train, y_train, cv=3, scoring=wmape_scorer)
-print("WMAPE médio (cross-val):", -scores.mean())
-print("WMAPE por fold:", -scores)
-
-# -----------------------------
-# GridSearchCV
-# -----------------------------
-param_grid = {
-    "regressor__n_estimators": [100, 200],
-    "regressor__max_depth": [10, 20, None],
-    "regressor__min_samples_split": [2, 5]
-}
-
-grid_search = GridSearchCV(
-    pipeline,
-    param_grid,
-    cv=3,
-    scoring=wmape_scorer,
-    n_jobs=-1,
-    verbose=2
-)
-
-grid_search.fit(X_train, y_train)
-print("Melhores hiperparâmetros:", grid_search.best_params_)
-print("Melhor WMAPE (cv):", -grid_search.best_score_)
-
-# -----------------------------
-# Avaliação final
-# -----------------------------
-best_pipeline = grid_search.best_estimator_
-y_pred = best_pipeline.predict(X_test)
-print("WMAPE test:", wmape(y_test, y_pred))
-
-# -----------------------------
-# Submissão
-# -----------------------------
-# Garante que pdv e produto do dataset de teste sejam strings para o pipeline
-df_teste['pdv'] = df_teste['pdv'].astype(str)
-df_teste['produto'] = df_teste['produto'].astype(str)
-
-# Predição
-y_submit = best_pipeline.predict(df_teste)
-
-# Monta dataframe de submissão
-df_submit = df_teste[["semana", "pdv", "produto"]].copy()
-df_submit["quantidade"] = np.round(y_submit).astype(int)
-
-# Converte todas colunas para inteiro antes de salvar
-df_submit["semana"] = df_submit["semana"].astype(int)
-df_submit["pdv"] = df_submit["pdv"].astype(int)
-df_submit["produto"] = df_submit["produto"].astype(int)
-
-# Salva CSV final para submissão
-df_submit.to_csv("submission.csv", sep=";", index=False, encoding="utf-8")
-print("Arquivo submission.csv gerado!")
+Replace the line below with code to load your actual test dataset.
 """
+try:
+    # Prepare a sample df_teste with original string IDs from training data
 
+    # Get unique original pdv and produto IDs from the training data before encoding
+    # We can access these from df_sem_outliers before the LabelEncoder was applied
+    # Assuming df_sem_outliers still contains the original string IDs
+
+    if 'pdv' in df_sem_outliers.columns and 'produto' in df_sem_outliers.columns and df_sem_outliers['pdv'].dtype == 'object':
+        unique_pdv_ids = df_sem_outliers['pdv'].unique()
+        unique_produto_ids = df_sem_outliers['produto'].unique()
+
+        # Select a few sample IDs for df_teste
+        sample_pdv_ids = unique_pdv_ids[:5] # Take the first 3 unique pdv IDs
+        sample_produto_ids = unique_produto_ids[:5] # Take the first 3 unique produto IDs
+
+        # Create the sample df_teste DataFrame
+        data = {
+        'semana': [1, 2, 3, 4, 5],
+        'pdv':     [sample_pdv_ids[0], sample_pdv_ids[1], sample_pdv_ids[2], sample_pdv_ids[3], sample_pdv_ids[4]], # Use sample original IDs
+        'produto': [sample_produto_ids[0], sample_produto_ids[1], sample_produto_ids[2], sample_produto_ids[3], sample_produto_ids[4]] # Use sample original IDs
+        }
+        df_teste_correct_format = pd.DataFrame(data)
+        df_teste_correct_format.to_csv('df_teste_correct_format.csv', index=False)
+
+        df_actual_test = pd.read_csv('/content/df_teste_correct_format.csv')
+
+        print("Dataset de submissao:\n", df_actual_test.head())
+
+        # Create mapping dictionaries from the fitted LabelEncoder classes
+        # Use the separate encoders for pdv and produto
+        pdv_mapping = {label: idx for idx, label in enumerate(le_pdv.classes_)}
+        produto_mapping = {label: idx for idx, label in enumerate(le_produto.classes_)}
+
+        # Apply mapping, assigning a default value (-1) to unseen labels
+        # Using -1 as a placeholder for unseen values. You might need to adjust
+        # this based on how your model handles unseen categorical values.
+        df_actual_test['pdv_encoded'] = df_actual_test['pdv'].map(pdv_mapping).fillna(-1).astype(int)
+        df_actual_test['produto_encoded'] = df_actual_test['produto'].map(produto_mapping).fillna(-1).astype(int)
+
+        # Select the features used for training (using the new encoded columns)
+        features_for_prediction = ['pdv_encoded', 'produto_encoded', 'semana'] # Use the new encoded column names
+        df_actual_test_processed = df_actual_test[features_for_prediction].copy()
+
+        # Rename columns to match the training features if necessary (e.g., if X_train had 'pdv' and 'produto')
+        df_actual_test_processed.rename(columns={'pdv_encoded': 'pdv', 'produto_encoded': 'produto'}, inplace=True)
+
+
+        # Create DMatrix for prediction
+        dtest_actual = xgb.DMatrix(df_actual_test_processed)
+
+        # Make predictions using the trained model
+        print("\nMaking predictions...")
+        test_probs_actual = gbm.predict(dtest_actual)
+
+        # Apply the best weight (from previous analysis) and inverse transform
+        peso_final = 0.999 # Using the best weight found in cell xgJctDhVF716
+        predictions_actual = np.expm1(test_probs_actual * peso_final)
+
+        # Add predictions to the original test DataFrame or a copy
+        # Add to the DataFrame used for prediction before renaming for submission
+        df_actual_test_processed['quantidade'] = predictions_actual
+
+        # Format for submission (adjust column names and types as needed)
+        # Assuming the submission requires the original 'pdv' and 'produto' IDs
+        # If submission requires encoded IDs, use df_actual_test_processed directly
+        submissao = pd.DataFrame({
+              "semana": df_actual_test['semana'].astype(int), # Use original 'semana' if needed
+              "pdv": df_actual_test['pdv'].astype(int), # Use original 'pdv' ID
+              "produto": df_actual_test['produto'].astype(int), # Use original 'produto' ID
+              "quantidade": df_actual_test_processed['quantidade'].astype(int) # Use predicted quantity
+          })
+
+        # If you had an 'Id' column and need a submission file:
+        # submission_actual = pd.DataFrame({"Id": test_ids, "quantidade": predictions_actual})
+        # submission_actual.to_csv("actual_predictions_submission.csv", index=False)
+        # print("\nSubmission file 'actual_predictions_submission.csv' created.")
+
+
+        print("Submissao:\n", submissao.head())
+        print(submissao.info())
+        submissao.to_csv("submission.csv", index=False, sep=';', encoding="utf-8") # Changed sep to ; and added encoding
+        print("\nArquivo submission.csv gerado!")
+
+    else:
+        print("Could not create sample df_teste with original IDs. 'df_sem_outliers' might not contain the original 'pdv' and 'produto' string IDs.")
+        print("Please ensure 'df_sem_outliers' or a similar DataFrame containing the original IDs is available.")
+
+except FileNotFoundError:
+    print("Error: Test data file not found. Please update the file path.")
+except ValueError as e:
+    print(f"Error during preprocessing (LabelEncoding): {e}")
+    print("This error might still occur if the mapping process failed unexpectedly.")
+except Exception as e:
+    print(f"An unexpected error occurred: {e}")
