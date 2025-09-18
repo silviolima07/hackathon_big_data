@@ -276,11 +276,11 @@ print(dtrain.get_label())
 
 
 # Treinamento
-print("Treinando em 100 epochs")
+print("Treinando em 5000 epochs")
 gbm = xgb.train(
             param,
             dtrain,
-            num_boost_round=100,
+            num_boost_round=5000,
             evals=watchlist,
             early_stopping_rounds=100,
             custom_metric=wmape,
