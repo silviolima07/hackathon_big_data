@@ -1,6 +1,19 @@
 # Previsão de Vendas - Hackathon Big Data
 
-Este projeto tem como objetivo prever a quantidade de vendas de produtos em pontos de venda (PDVs) para determinadas semanas, utilizando dados reais de transações. O código principal está no arquivo `hacka_vendas.py`, desenvolvido durante um hackathon de Big Data.
+Este projeto tem como objetivo prever a quantidade de vendas de produtos em pontos de venda (PDVs) para determinadas semanas, utilizando dados reais de transações. O código principal está disponível em um notebook Jupyter/Colab.
+
+## Como Executar o Notebook
+
+1. **Abra o notebook no Google Colab ou Jupyter Notebook.**
+2. **Execute cada célula sequencialmente, desde o início até o final, sem pular nenhuma etapa.**
+    - É importante rodar todas as células para garantir o correto carregamento das bibliotecas, leitura do dataset e criação das features.
+3. **Configuração do caminho do dataset:**  
+    - Antes de rodar a célula de leitura dos dados, **configure o caminho do arquivo do dataset** para o local onde ele está disponível.
+    - Neste projeto, o dataset foi obtido a partir do **Google Drive**. Certifique-se de montar o Google Drive (no Colab: `from google.colab import drive; drive.mount('/content/drive')`) e ajustar o caminho do arquivo Parquet conforme o local em que está salvo no seu Drive.
+    - Exemplo de caminho:  
+      `'/content/drive/MyDrive/hackathon_big_data/dataset.parquet'`
+
+4. Após executar todas as células, o arquivo de submissão será gerado como `submission.csv`.
 
 ## Descrição do Processo
 
@@ -19,7 +32,7 @@ O código realiza as seguintes etapas:
 ### 3. **Preparação dos Dados**
 - As colunas são renomeadas para facilitar o processamento.
 - É extraído o número da semana do ano a partir da data de transação.
-- Foram feitos testes com apenas 10% dos dados são utilizados para treinamento como demonstração.
+- Foram feitos testes com apenas 10% dos dados como demonstração.
 
 ### 4. **Engenharia de Features**
 - São criadas variáveis de lag (valores de vendas de semanas anteriores) e médias móveis para cada combinação de PDV e produto.
@@ -47,20 +60,13 @@ O código realiza as seguintes etapas:
 - pyarrow
 - scikit-learn
 
-## Como Executar
+### Instalação das dependências
 
-1. Instale as dependências:
-   ```bash
-   pip install -r requirements.txt
-   ```
-   Ou individualmente:
-   ```bash
-   pip install pandas numpy pyarrow  scikit-learn
-   ```
+No Colab, elas já estão disponíveis. Caso rode localmente, instale com:
 
-2. Execute celula por celula no colab ou execute todas.
-
-3. O arquivo de submissão será gerado como `submission.csv`.
+```bash
+pip install pandas numpy pyarrow scikit-learn
+```
 
 ## Observações
 
@@ -71,4 +77,3 @@ O código realiza as seguintes etapas:
 ## Autor
 
 Desenvolvido por [silviolima07](https://github.com/silviolima07) para o Hackathon Big Data.
-
