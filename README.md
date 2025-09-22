@@ -55,13 +55,10 @@ O código realiza as seguintes etapas:
    ```
    Ou individualmente:
    ```bash
-   pip install pandas numpy pyarrow duckdb scikit-learn seaborn matplotlib
+   pip install pandas numpy pyarrow  scikit-learn
    ```
 
-2. Execute o script principal:
-   ```bash
-   python hacka_vendas.py
-   ```
+2. Execute celula por celula no colab ou execute todas.
 
 3. O arquivo de submissão será gerado como `submission.csv`.
 
