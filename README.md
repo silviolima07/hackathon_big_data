@@ -19,7 +19,7 @@ O código realiza as seguintes etapas:
 ### 3. **Preparação dos Dados**
 - As colunas são renomeadas para facilitar o processamento.
 - É extraído o número da semana do ano a partir da data de transação.
-- Apenas 10% dos dados são utilizados para treinamento como demonstração.
+- Foram feitos testes com apenas 10% dos dados são utilizados para treinamento como demonstração.
 
 ### 4. **Engenharia de Features**
 - São criadas variáveis de lag (valores de vendas de semanas anteriores) e médias móveis para cada combinação de PDV e produto.
@@ -29,7 +29,7 @@ O código realiza as seguintes etapas:
 - Um conjunto de teste é gerado simulando previsões para as semanas 1 a 5 de janeiro, usando combinações distintas de PDV e produto.
 
 ### 6. **Preparação para Submissão**
-- O dataset de teste recebe as mesmas features criadas para o treino, extraídas dos dados históricos.
+- O dataset de submissão recebe as mesmas features criadas para o treino, extraídas dos dados históricos.
 - Garante-se que todas as features esperadas pelo modelo estejam presentes.
 
 ### 7. **Treinamento e Avaliação do Modelo**
@@ -45,10 +45,7 @@ O código realiza as seguintes etapas:
 - pandas
 - numpy
 - pyarrow
-- duckdb
 - scikit-learn
-- seaborn
-- matplotlib
 
 ## Como Executar
 
